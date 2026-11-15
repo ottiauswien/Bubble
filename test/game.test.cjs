@@ -2,12 +2,13 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const chainSource=fs.readFileSync(require('node:path').join(__dirname, '../chain.js'),'utf8');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../game.js'), 'utf8');
 
 // DOM/Canvas contract simulation. This deliberately does not claim browser or GPU coverage.
-function game(save = '{}', storageFails = false) {
+function game(save = '{}', storageFails = false, search = '', extraStorage = {}) {
   const elements = new Map(), events = new Map();
-  let stored = save, drawCalls = 0;
+  let stored = save, drawCalls = 0;const otherStorage=new Map(Object.entries(extraStorage));
   const context2d = new Proxy({}, { get(target, key) {
     if (key === 'createRadialGradient') return () => ({ addColorStop() {} });
     return (...args) => { drawCalls++; for (const arg of args) if (typeof arg === 'number') assert(Number.isFinite(arg), key + ' received a non-finite number'); };
@@ -23,15 +24,15 @@ function game(save = '{}', storageFails = false) {
   const document = { hidden: false, createElement: element,
     getElementById(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
     addEventListener(type, cb) { events.set(type, cb); } };
-  const sandbox = vm.createContext({ console, Math, Set, Map, Array, Number, JSON, String,
-    document, window: { devicePixelRatio: 2, addEventListener() {} },
-    localStorage: { getItem() { if (storageFails) throw Error('denied'); return stored; },
-      setItem(key, val) { if (storageFails) throw Error('denied'); stored = val; } },
+  const sandbox = vm.createContext({ console, Math, Set, Map, Array, Number, JSON, String, URLSearchParams,
+    document, window: { devicePixelRatio: 2, location: {search}, addEventListener() {} },
+    localStorage: { getItem(key) { if (storageFails) throw Error('denied'); return key==='bubble-orbit'?stored:otherStorage.get(key)||null; },
+      setItem(key, val) { if (storageFails) throw Error('denied'); if(key==='bubble-orbit')stored = val;else otherStorage.set(key,val); } },
     performance: { now: () => 1000 }, requestAnimationFrame() {} });
   const run = code => vm.runInContext(code, sandbox);
-  run(source);
+  run(chainSource);run(source);
   return { run, el: id => document.getElementById(id), events, document,
-    saved: () => JSON.parse(stored), draws: () => drawCalls };
+    saved: (mode='classic') => JSON.parse(mode==='chain'?otherStorage.get('bubble-orbit-chain')||'{}':stored), draws: () => drawCalls };
 }
 
 test('all 100 starting boards are valid, fit above the danger line and use existing shot colors', () => {
@@ -150,4 +151,85 @@ test('randomized play: 50 boards, up to 100 shots each, no stuck shots or invali
     }
   }
   assert(shots>300);
+});
+
+test('mode links select the correct game and ignore invalid mode values', () => {
+  assert.equal(game('{}',false,'?mode=chain').run('mode'),'chain');
+  assert.equal(game('{}',false,'?mode=classic').run('mode'),'classic');
+  assert.equal(game('{}',false,'?mode=invalid').run('mode'),'classic');
+  assert.equal(game('{}',false,'',{'bubble-orbit-mode':'chain'}).run('mode'),'chain');
+});
+test('mode switching keeps progress separate and resets active shots safely', () => {
+  const g=game('{"level":4,"score":700,"best":900}');
+  g.run('play();fire();switchMode("chain")');assert.equal(g.run('shot'),null);
+  assert.equal(g.run('level'),1);assert.equal(g.run('score'),0);assert.equal(g.run('state'),'intro');
+  g.run('level=3;score=200;setup();play();switchMode("classic")');
+  assert.equal(g.run('level'),4);assert.equal(g.run('score'),700);assert.equal(g.run('best'),900);
+  g.run('switchMode("chain")');assert.equal(g.run('level'),3);assert.equal(g.run('score'),200);
+});
+test('switch buttons expose their selected state and matching instructions', () => {
+  const g=game();g.el('modeChain').onclick();
+  assert.equal(g.el('modeChain').attributes['aria-pressed'],'true');assert.equal(g.el('modeClassic').attributes['aria-pressed'],'false');
+  assert.equal(g.el('classicRules').hidden,true);assert.equal(g.el('chainRules').hidden,false);assert.equal(g.el('chainMeter').hidden,false);
+  g.el('modeClassic').onclick();assert.equal(g.el('chainRules').hidden,true);assert.equal(g.el('chainMeter').hidden,true);
+});
+test('chain track is monotonic in distance and contained within the board', () => {
+  const g=game('{}',false,'?mode=chain');
+  assert(g.run('trackLength>1200'));
+  assert(g.run('track.every((p,i)=>p.x>=R&&p.x<=W-R&&p.y>=R&&p.y<LAUNCH.y-50&&(!i||p.s>track[i-1].s))'));
+  for(let i=0;i<100;i++) {const p=g.run(`trackPoint(${i}*trackLength/99)`);assert(Number.isFinite(p.x)&&Number.isFinite(p.y));}
+});
+test('100 chain levels start before the exit with valid finite ordered bubbles', () => {
+  const g=game('{}',false,'?mode=chain');
+  for(let n=1;n<=100;n++){
+    g.run(`level=${n};setup()`);
+    assert(g.run('chain[0].s<trackLength'));
+    assert(g.run('chain.length+chainQueue.length===Math.min(80,24+level*4)'));
+    assert(g.run('chain.every((b,i)=>b.color>=0&&b.color<6&&Number.isFinite(b.s)&&(!i||Math.abs(chain[i-1].s-b.s-CHAIN_GAP)<.01))'));
+  }
+});
+test('inserting a third matching chain bubble resolves the group and wins', () => {
+  const g=game('{}',false,'?mode=chain');
+  g.run('chain=[{s:200,displayS:200,color:0},{s:165,displayS:165,color:0}];chainQueue=[];state="playing";score=0;insertChain(0,{...trackPoint(200),color:0})');
+  assert.equal(g.run('chain.length'),0);assert.equal(g.run('state'),'clearing');assert.equal(g.run('score'),130);assert.equal(g.saved('chain').level,2);
+});
+test('different chain colors insert without destroying existing bubbles or breaking spacing', () => {
+  const g=game('{}',false,'?mode=chain');
+  g.run('chain=[{s:200,displayS:200,color:0},{s:165,displayS:165,color:0}];chainQueue=[];state="playing";insertChain(0,{...trackPoint(200),color:1})');
+  assert.equal(g.run('chain.length'),3);assert(g.run('chain.every((b,i)=>!i||Math.abs(chain[i-1].s-b.s-CHAIN_GAP)<.01)'));
+});
+test('closing a chain gap triggers a scored chain reaction', () => {
+  const g=game('{}',false,'?mode=chain');
+  g.run('chain=[1,1,0,0,0,1].map((color,i)=>({s:400-i*35,displayS:400-i*35,color}));chainQueue=[];score=0;resolveChain(3)');
+  assert.equal(g.run('chain.length'),0);assert.equal(g.run('score'),90);
+});
+test('pending chain balls spawn at the entry and prevent an early win', () => {
+  const g=game('{}',false,'?mode=chain');
+  g.run('chain=[];chainQueue=[1,1];state="playing";update(.01)');assert.equal(g.run('chain.length'),1);assert.equal(g.run('chainQueue.length'),1);
+  assert.equal(g.run('chainWin()'),false);assert.equal(g.run('state'),'playing');
+});
+test('reaching the chain exit loses and pause freezes both chain and shot', () => {
+  const g=game('{}',false,'?mode=chain');g.run('play();fire();pause()');const s=g.run('chain[0].s');g.run('update(.5)');assert.equal(g.run('chain[0].s'),s);assert.equal(g.run('shot.y'),515);
+  g.run('play();chain[0].s=trackLength-.1;update(.1)');assert.equal(g.run('state'),'lost');assert.equal(g.run('shot'),null);
+});
+test('chain movement is frame-rate independent at 30/60/120/144 Hz', () => {
+  let reference;
+  for(const hz of [30,60,120,144]){
+    const g=game('{}',false,'?mode=chain');g.run('play();last=1000');
+    for(let i=1;i<=hz;i++)g.run(`frame(${1000+i*1000/hz})`);
+    const s=g.run('chain[0].s');if(reference===undefined)reference=s;assert(Math.abs(s-reference)<1e-6);
+  }
+});
+test('randomized chain play settles projectiles, preserves ordering and renders without errors', () => {
+  const g=game('{}',false,'?mode=chain');
+  for(let n=1;n<=15;n++){
+    g.run(`level=${n};score=0;setup();play();setSpeed(150)`);
+    for(let t=0;t<50&&g.run('state')==='playing';t++){
+      g.run('angle=-Math.PI+.17+Math.random()*(Math.PI-.34);fire()');
+      for(let f=0;f<700&&g.run('shot!==null');f++)g.run('update(1/60)');
+      assert.equal(g.run('shot'),null);
+      assert(g.run('chain.every((b,i)=>Number.isFinite(b.s)&&Number.isFinite(b.displayS)&&(!i||chain[i-1].s>b.s))'));
+      g.run('draw()');
+    }
+  }
 });
