@@ -2,16 +2,26 @@
 
 https://ottiauswien.github.io/Bubble/
 
-Die Startseite bietet zwei Spielvarianten: **Bubble Klassisch** (Feld abräumen, Wandsprünge) und **Kugelkette** (bewegte Kette auf einer Bahn, Dreiergruppen, Kettenreaktionen, Ausgang freihalten).
+Drei Spiele mit eigener Grafik und Steuerung:
 
-`play.html?mode=classic` und `play.html?mode=chain` öffnen den gewünschten Modus direkt. Im Spiel lässt sich ebenfalls umschalten. Ein laufendes Level startet beim Wechsel neu. Beide Modi speichern ihre abgeschlossenen Levels und Punktestände getrennt auf dem Gerät. Bestehender klassischer Fortschritt bleibt erhalten.
+- **Bubble Klassisch:** Feld abräumen, Wandsprünge, Levels.
+- **Kugelkette:** bewegte Kette, Dreiergruppen, Kettenreaktionen. Der Ausgang muss frei bleiben.
+- **Luna Sprung:** kurzes Jump-and-Run-Testlevel mit variabler Sprunghöhe, 25 freiwilligen Kristallen, drei Schluchten, Plattformen, drei Gegnern, Rückkehrfahne und Sternentor.
 
-Helle Kugeln ohne Rot-Grün-Paarung und sechs eindeutige Vektorsymbole. Tempo-Regler 25–150 %, Pause, Kugeltausch, Zielhilfe. In der Kugelkette verlangsamt der Regler auch die laufende Kette. Alle Seiten laufen statisch ohne zusätzliche Abhängigkeiten.
+`play.html?mode=classic` und `play.html?mode=chain` öffnen Bubble direkt. `runner.html` startet das Jump-and-Run. Übersicht: `index.html`.
+
+Die Bubble-Modi speichern ihre abgeschlossenen Levels getrennt. Luna speichert Abschluss und beste Kristallausbeute. Alle Spiele funktionieren ohne Anmeldung und ohne zusätzliche Abhängigkeiten. Helle Kugeln und eindeutige Symbole helfen beim Unterscheiden ohne Farberkennung.
+
+## Luna steuern
+
+Pfeiltasten links/rechts oder A/D; Springen mit Leertaste, Pfeil hoch oder W. Am Handy Richtung gedrückt halten und gleichzeitig Springen antippen. Länger halten springt höher. P/Escape pausiert. Auf Gegner springen besiegt sie; seitlicher Kontakt oder ein Sturz setzt zur Rückkehrfahne zurück. Kein Zeitlimit, unbegrenzte Wiederanläufe.
 
 ## Tests
 
-`node test/game.test.cjs`
+`node test/game.test.cjs` — 34 Tests.
 
-34 automatisierte Tests: klassische Regeln, Kettenlogik, Einfügen, Reaktionen, Zulauf, Sieg/Niederlage, Moduswahl per Link, Moduswechsel, getrennter Fortschritt, kontrastreiche Symbole, simulierte 30/60/120/144 Hz und Zufallsspiele. DOM/Canvas werden simuliert; echte Browser-, Touch- und GPU-Prüfungen waren in der Entwicklungsumgebung mangels Browsersteuerung nicht verfügbar.
+`node test/runner.test.cjs` — 16 Tests, einschließlich eines vollständigen Durchlaufs mit normalen Steuerbefehlen ohne Sturz.
+
+DOM/Canvas und Bildraten wurden simuliert. Browser-, GPU- und echte Touch-Prüfungen waren in der Entwicklungsumgebung mangels Browsersteuerung nicht verfügbar.
 
 GitHub Pages: Branch `main`, Verzeichnis `/ (root)`.

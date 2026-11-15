@@ -6,6 +6,8 @@ function refreshProgress(){for(const mode of ['classic','chain']) {
     const level=Math.max(1,Math.min(999,Number(progress?.level)||1));
     document.getElementById(mode+'Progress').textContent=level>1?'Weiter mit Level '+level:'Starte mit Level 1';
   } catch {}
-}}
+}
+try{const p=JSON.parse(localStorage.getItem('luna-sprung')||'{}');if(p?.completed)document.getElementById('runnerProgress').textContent='Geschafft · '+(Number(p.bestGems)||0)+' / 25 Kristalle';}catch{}
+}
 refreshProgress();
 window.addEventListener('pageshow',refreshProgress);
