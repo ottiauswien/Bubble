@@ -129,6 +129,14 @@ test('retina rendering uses doubled backing resolution and cached sprites', () =
   const g=game();assert.equal(g.el('game').width,880);assert.equal(g.el('game').height,1140);
   g.run('draw()');const count=g.run('spriteCache.size');g.run('draw()');assert.equal(g.run('spriteCache.size'),count);assert(g.draws()>0);
 });
+test('all six bubble types have unique vector symbols with at least 7:1 symbol contrast', () => {
+  const g=game();
+  assert.equal(g.run('new Set(symbols).size'),6);
+  const palette=JSON.parse(g.run('JSON.stringify(colors)'));
+  const luminance=hex=>{const a=hex.slice(1).match(/../g).map(v=>parseInt(v,16)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return a[0]*.2126+a[1]*.7152+a[2]*.0722;};
+  for(const color of palette) assert((luminance(color)+.05)/(luminance('#202741')+.05)>=7);
+  g.run('colors.forEach((color,i)=>orb(40+i*50,200,color));draw()');
+});
 test('randomized play: 50 boards, up to 100 shots each, no stuck shots or invalid state', () => {
   const g=game();let shots=0;
   for(let n=1;n<=50;n++){
